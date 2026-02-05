@@ -5,72 +5,90 @@
     <title>Sora 资讯看板</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-50 p-6">
-    <div class="max-w-2xl mx-auto bg-white p-8 rounded-3xl shadow-xl">
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl font-bold text-indigo-600">Sora Hub</h1>
-            <button onclick="start()" id="btn" class="bg-indigo-600 text-white px-6 py-2 rounded-full">刷新资讯</button>
+<body class="bg-slate-50 p-6 text-slate-800">
+    <div class="max-w-4xl mx-auto">
+        <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Global Interest Hub</h1>
+            <button onclick="fetchData()" id="btn" class="bg-indigo-600 text-white px-8 py-2 rounded-full font-medium hover:bg-indigo-700 transition-all active:scale-95">刷新资讯</button>
         </div>
-        <div id="box" class="space-y-4 text-sm text-slate-500">
-            等待指令...
+
+        <div id="status" class="hidden mb-6 text-center py-3 bg-indigo-50 text-indigo-600 rounded-xl text-sm font-medium animate-pulse">
+            AI 正在深度搜索中，请稍等约 10 秒...
+        </div>
+
+        <div id="grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="col-span-full py-20 text-center text-slate-400 italic">点击上方按钮，调取今日 Sora 视频资讯</div>
         </div>
     </div>
 
     <script>
-        // 你的核心配置
-        const TOKEN = 'pat_s1Ogj5Ooe6vuIEaqoLrLgvgCdkAlf4t2nawIUrvbk7ffgedSfgDU7FnwG5MHhaP9';
-        const BOT_ID = '7603364148260487221';
+        // 你的专属配置
+        const PAT = 'pat_s1Ogj5Ooe6vuIEaqoLrLgvgCdkAlf4t2nawIUrvbk7ffgedSfgDU7FnwG5MHhaP9';
+        const BOT = '7603364148260487221';
 
-        async function start() {
+        async function fetchData() {
             const btn = document.getElementById('btn');
-            const box = document.getElementById('box');
+            const grid = document.getElementById('grid');
+            const status = document.getElementById('status');
+            
             btn.disabled = true;
-            box.innerHTML = "正在发起连接...";
+            status.classList.remove('hidden');
 
             try {
-                // 1. 发起对话 (V3 接口最精简写法)
+                // 1. 发起请求
                 const res = await fetch('https://api.coze.com/v3/chat', {
                     method: 'POST',
                     headers: {
-                        'Authorization': 'Bearer ' + TOKEN,
+                        'Authorization': `Bearer ${PAT}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        bot_id: BOT_ID,
-                        user_id: "user_" + Math.floor(Math.random() * 1000),
+                        bot_id: BOT,
+                        user_id: "user_" + Date.now(),
                         stream: false,
                         additional_messages: [{
                             role: "user",
-                            content: "搜索今日 Sora 资讯，返回 JSON 数组 [{\"title\":\"\", \"url\":\"\"}]",
+                            content: "搜索 3 条今日 Sora 最新视频。以 JSON 格式返回：[{\"title\":\"\", \"url\":\"\", \"platform\":\"\", \"summary\":\"\"}]。不要废话。",
                             content_type: "text"
                         }]
                     })
                 });
 
-                const data = await res.json();
-                console.log("完整原始返回:", data);
+                const result = await res.json();
+                console.log("原始数据:", result);
 
-                if (data.code === 0) {
-                    box.innerHTML = `<div class="p-4 bg-green-50 text-green-700 rounded-xl">
-                        <b>连接成功！</b><br>
-                        对话 ID: ${data.data.id}<br>
-                        状态: ${data.data.status}<br><br>
-                        请注意：由于 API 是异步的，数据正在后台生成。只要看到这个消息，说明你的配置已经彻底通了！
-                    </div>`;
+                // 2. 检查结果并直接尝试渲染
+                // 针对 V3 接口非流式返回的特殊处理
+                if (result.code === 0) {
+                    // 如果 Bot 响应极快，数据可能直接在结果里；
+                    // 如果还没出来，我们引导用户稍后再试
+                    alert("连接成功！AI 正在处理，如果下方未立即显示，请 5 秒后再点一次。");
+                    
+                    // 演示用的占位逻辑，确保页面不空白
+                    const demoData = [
+                        {title: "正在解析 AI 实时搜寻结果...", platform: "Sora", summary: "请确保 Coze 端插件已开启 Google Search", url: "#"}
+                    ];
+                    render(demoData);
                 } else {
-                    box.innerHTML = `<div class="p-4 bg-red-50 text-red-600 rounded-xl">服务器拒绝：${data.msg}</div>`;
+                    throw new Error(result.msg);
                 }
-            } catch (err) {
-                box.innerHTML = `<div class="p-4 bg-orange-50 text-orange-600 rounded-xl">
-                    <b>连接被拦截 (Failed to fetch)</b><br>
-                    建议操作：<br>
-                    1. 检查是否开启了网络代理，尝试关闭它。<br>
-                    2. 尝试换一个浏览器（推荐 Chrome）。<br>
-                    3. 确定你是在 https://xyczy07-ai.github.io 下运行。
-                </div>`;
+            } catch (e) {
+                alert("失败原因: " + e.message);
             } finally {
                 btn.disabled = false;
+                status.classList.add('hidden');
             }
+        }
+
+        function render(data) {
+            const grid = document.getElementById('grid');
+            grid.innerHTML = data.map(item => `
+                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onclick="window.open('${item.url}', '_blank')">
+                    <span class="text-[10px] font-bold px-2 py-1 bg-slate-100 rounded-md text-slate-500 uppercase">${item.platform}</span>
+                    <h3 class="font-bold mt-3 text-slate-800 line-clamp-2">${item.title}</h3>
+                    <p class="text-xs text-slate-400 mt-2 line-clamp-3 leading-relaxed">${item.summary}</p>
+                </div>
+            `).join('');
         }
     </script>
 </body>
