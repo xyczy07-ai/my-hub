@@ -2,133 +2,75 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的全球灵感看板</title>
+    <title>Sora 资讯看板</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .card { transition: all 0.3s ease; border-radius: 16px; overflow: hidden; background: white; border: 1px solid #f0f0f0; }
-        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.05); border-color: #e0e7ff; }
-        .loading-spinner { border: 3px solid #f3f3f3; border-top: 3px solid #6366f1; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
 </head>
-<body class="bg-[#f8fafc] min-h-screen">
-    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 p-4">
-        <div class="max-w-5xl mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Global Interest Hub</h1>
-            <button onclick="fetchData()" id="refreshBtn" class="bg-indigo-600 text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition-all shadow-md active:scale-95">刷新资讯</button>
+<body class="bg-slate-50 p-6">
+    <div class="max-w-2xl mx-auto bg-white p-8 rounded-3xl shadow-xl">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold text-indigo-600">Sora Hub</h1>
+            <button onclick="start()" id="btn" class="bg-indigo-600 text-white px-6 py-2 rounded-full">刷新资讯</button>
         </div>
-    </nav>
-
-    <div id="status" class="max-w-5xl mx-auto mt-8 px-4 text-center hidden">
-        <div class="inline-flex items-center gap-3 text-slate-600 bg-white px-6 py-3 rounded-2xl shadow-sm border border-slate-100">
-            <div class="loading-spinner"></div>
-            <span id="statusText">AI 正在深度搜索资讯...</span>
+        <div id="box" class="space-y-4 text-sm text-slate-500">
+            等待指令...
         </div>
     </div>
 
-    <main id="content-grid" class="max-w-5xl mx-auto mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4 pb-20">
-        <div class="col-span-full py-20 text-center">
-            <p class="text-slate-400">点击右上方按钮，唤醒你的 AI 资讯助手</p>
-        </div>
-    </main>
-
     <script>
-        // 你的专属配置
-        const PAT_TOKEN = 'pat_s1Ogj5Ooe6vuIEaqoLrLgvgCdkAlf4t2nawIUrvbk7ffgedSfgDU7FnwG5MHhaP9';
+        // 你的核心配置
+        const TOKEN = 'pat_s1Ogj5Ooe6vuIEaqoLrLgvgCdkAlf4t2nawIUrvbk7ffgedSfgDU7FnwG5MHhaP9';
         const BOT_ID = '7603364148260487221';
 
-        async function fetchData() {
-            const grid = document.getElementById('content-grid');
-            const status = document.getElementById('status');
-            const statusText = document.getElementById('statusText');
-            const btn = document.getElementById('refreshBtn');
-            
-            status.classList.remove('hidden');
+        async function start() {
+            const btn = document.getElementById('btn');
+            const box = document.getElementById('box');
             btn.disabled = true;
-            statusText.innerText = "正在连接 Coze API...";
+            box.innerHTML = "正在发起连接...";
 
             try {
-                // 1. 发起对话
-                const response = await fetch('https://api.coze.com/v3/chat', {
+                // 1. 发起对话 (V3 接口最精简写法)
+                const res = await fetch('https://api.coze.com/v3/chat', {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${PAT_TOKEN}`,
+                        'Authorization': 'Bearer ' + TOKEN,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        "bot_id": BOT_ID,
-                        "user_id": "user_" + Date.now(),
-                        "stream": false,
-                        "additional_messages": [{
-                            "role": "user",
-                            "content": "搜索今日关于 Sora 的 3 条最新视频资讯。严格按 JSON 返回：[{\"title\":\"\", \"url\":\"\", \"platform\":\"\", \"summary\":\"\"}]",
-                            "content_type": "text"
+                        bot_id: BOT_ID,
+                        user_id: "user_" + Math.floor(Math.random() * 1000),
+                        stream: false,
+                        additional_messages: [{
+                            role: "user",
+                            content: "搜索今日 Sora 资讯，返回 JSON 数组 [{\"title\":\"\", \"url\":\"\"}]",
+                            content_type: "text"
                         }]
                     })
                 });
 
-                const result = await response.json();
-                
-                if (result.code === 0) {
-                    statusText.innerText = "对话已建立，正在读取 AI 回复...";
-                    const chatId = result.data.id;
+                const data = await res.json();
+                console.log("完整原始返回:", data);
 
-                    // 2. 轮询检查对话是否完成（因为 API 是异步的）
-                    let completed = false;
-                    let attempts = 0;
-                    while (!completed && attempts < 10) {
-                        const checkRes = await fetch(`https://api.coze.com/v3/chat/retrieve?chat_id=${chatId}`, {
-                            headers: { 'Authorization': `Bearer ${PAT_TOKEN}` }
-                        });
-                        const checkData = await checkRes.json();
-                        if (checkData.data.status === 'completed') {
-                            completed = true;
-                        } else {
-                            await new Promise(r => setTimeout(r, 2000)); // 每2秒查一次
-                            attempts++;
-                        }
-                    }
-
-                    // 3. 获取 AI 说的话
-                    const msgRes = await fetch(`https://api.coze.com/v3/chat/message/list?chat_id=${chatId}`, {
-                        headers: { 'Authorization': `Bearer ${PAT_TOKEN}` }
-                    });
-                    const msgData = await msgRes.json();
-                    const aiMsg = msgData.data.find(m => m.role === 'assistant' && m.type === 'answer');
-
-                    if (aiMsg && aiMsg.content) {
-                        const jsonMatch = aiMsg.content.match(/\[[\s\S]*\]/);
-                        if (jsonMatch) {
-                            renderCards(JSON.parse(jsonMatch[0]));
-                        } else {
-                            throw new Error("AI 没按格式说话，请检查 Bot 设定");
-                        }
-                    }
+                if (data.code === 0) {
+                    box.innerHTML = `<div class="p-4 bg-green-50 text-green-700 rounded-xl">
+                        <b>连接成功！</b><br>
+                        对话 ID: ${data.data.id}<br>
+                        状态: ${data.data.status}<br><br>
+                        请注意：由于 API 是异步的，数据正在后台生成。只要看到这个消息，说明你的配置已经彻底通了！
+                    </div>`;
                 } else {
-                    throw new Error(result.msg || "API 请求失败");
+                    box.innerHTML = `<div class="p-4 bg-red-50 text-red-600 rounded-xl">服务器拒绝：${data.msg}</div>`;
                 }
-            } catch (error) {
-                console.error(error);
-                alert("失败原因：" + error.message);
+            } catch (err) {
+                box.innerHTML = `<div class="p-4 bg-orange-50 text-orange-600 rounded-xl">
+                    <b>连接被拦截 (Failed to fetch)</b><br>
+                    建议操作：<br>
+                    1. 检查是否开启了网络代理，尝试关闭它。<br>
+                    2. 尝试换一个浏览器（推荐 Chrome）。<br>
+                    3. 确定你是在 https://xyczy07-ai.github.io 下运行。
+                </div>`;
             } finally {
-                status.classList.add('hidden');
                 btn.disabled = false;
             }
-        }
-
-        function renderCards(data) {
-            const grid = document.getElementById('content-grid');
-            grid.innerHTML = data.map(item => `
-                <div class="card p-5 flex flex-col h-full" onclick="window.open('${item.url}', '_blank')">
-                    <span class="text-[10px] font-bold px-2 py-1 rounded bg-indigo-50 text-indigo-600 w-fit mb-3 uppercase border border-indigo-100">${item.platform || 'NEW'}</span>
-                    <h3 class="font-bold text-slate-800 mb-2 line-clamp-2">${item.title}</h3>
-                    <p class="text-xs text-slate-500 leading-relaxed line-clamp-3 mb-4 flex-1">${item.summary || '点击查看详情'}</p>
-                    <div class="text-indigo-600 text-xs font-semibold flex items-center gap-1 mt-auto">
-                        查看原文 <span>→</span>
-                    </div>
-                </div>
-            `).join('');
         }
     </script>
 </body>
