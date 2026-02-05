@@ -5,90 +5,100 @@
     <title>Sora 资讯看板</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-50 p-6 text-slate-800">
+<body class="bg-slate-50 p-6">
     <div class="max-w-4xl mx-auto">
-        <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-            <h1 class="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Global Interest Hub</h1>
-            <button onclick="fetchData()" id="btn" class="bg-indigo-600 text-white px-8 py-2 rounded-full font-medium hover:bg-indigo-700 transition-all active:scale-95">刷新资讯</button>
+        <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-3xl shadow-sm border">
+            <h1 class="text-2xl font-bold text-indigo-600">Sora Hub</h1>
+            <button onclick="fetchData()" id="btn" class="bg-indigo-600 text-white px-8 py-2 rounded-full font-medium">刷新资讯</button>
         </div>
 
-        <div id="status" class="hidden mb-6 text-center py-3 bg-indigo-50 text-indigo-600 rounded-xl text-sm font-medium animate-pulse">
-            AI 正在深度搜索中，请稍等约 10 秒...
+        <div id="status" class="hidden mb-6 text-center py-4 bg-white rounded-2xl border border-indigo-100 text-indigo-600 shadow-sm">
+            <span id="statusText">AI 正在深度搜索中...</span>
         </div>
 
         <div id="grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div class="col-span-full py-20 text-center text-slate-400 italic">点击上方按钮，调取今日 Sora 视频资讯</div>
+            <div class="col-span-full py-20 text-center text-slate-400">点击按钮，唤醒你的 AI 资讯助手</div>
         </div>
     </div>
 
     <script>
-        // 你的专属配置
         const PAT = 'pat_s1Ogj5Ooe6vuIEaqoLrLgvgCdkAlf4t2nawIUrvbk7ffgedSfgDU7FnwG5MHhaP9';
         const BOT = '7603364148260487221';
 
         async function fetchData() {
             const btn = document.getElementById('btn');
-            const grid = document.getElementById('grid');
             const status = document.getElementById('status');
-            
+            const statusText = document.getElementById('statusText');
+            const grid = document.getElementById('grid');
+
             btn.disabled = true;
             status.classList.remove('hidden');
+            grid.innerHTML = ''; 
 
             try {
-                // 1. 发起请求
+                // 1. 发起对话
                 const res = await fetch('https://api.coze.com/v3/chat', {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${PAT}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Authorization': `Bearer ${PAT}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         bot_id: BOT,
                         user_id: "user_" + Date.now(),
                         stream: false,
                         additional_messages: [{
                             role: "user",
-                            content: "搜索 3 条今日 Sora 最新视频。以 JSON 格式返回：[{\"title\":\"\", \"url\":\"\", \"platform\":\"\", \"summary\":\"\"}]。不要废话。",
+                            content: "搜索今日 Sora 3条视频资讯，直接返回 JSON 数组不要废话：[{\"title\":\"\", \"url\":\"\", \"platform\":\"\", \"summary\":\"\"}]",
                             content_type: "text"
                         }]
                     })
                 });
 
-                const result = await res.json();
-                console.log("原始数据:", result);
+                const startData = await res.json();
+                const chatId = startData.data.id;
 
-                // 2. 检查结果并直接尝试渲染
-                // 针对 V3 接口非流式返回的特殊处理
-                if (result.code === 0) {
-                    // 如果 Bot 响应极快，数据可能直接在结果里；
-                    // 如果还没出来，我们引导用户稍后再试
-                    alert("连接成功！AI 正在处理，如果下方未立即显示，请 5 秒后再点一次。");
+                // 2. 轮询等待 AI 完成搜索
+                let isDone = false;
+                while (!isDone) {
+                    statusText.innerText = "AI 正在搜寻并整理资讯，请稍候...";
+                    const check = await fetch(`https://api.coze.com/v3/chat/retrieve?chat_id=${chatId}`, {
+                        headers: { 'Authorization': `Bearer ${PAT}` }
+                    });
+                    const checkData = await check.json();
                     
-                    // 演示用的占位逻辑，确保页面不空白
-                    const demoData = [
-                        {title: "正在解析 AI 实时搜寻结果...", platform: "Sora", summary: "请确保 Coze 端插件已开启 Google Search", url: "#"}
-                    ];
-                    render(demoData);
-                } else {
-                    throw new Error(result.msg);
+                    if (checkData.data.status === 'completed') {
+                        isDone = true;
+                    } else if (checkData.data.status === 'failed') {
+                        throw new Error("AI 搜索失败了");
+                    } else {
+                        await new Promise(r => setTimeout(r, 3000)); // 每3秒查一次
+                    }
+                }
+
+                // 3. 获取 AI 最终说的话
+                const msgRes = await fetch(`https://api.coze.com/v3/chat/message/list?chat_id=${chatId}`, {
+                    headers: { 'Authorization': `Bearer ${PAT}` }
+                });
+                const msgData = await msgRes.json();
+                const aiMsg = msgData.data.find(m => m.role === 'assistant' && m.type === 'answer');
+
+                if (aiMsg) {
+                    const jsonMatch = aiMsg.content.match(/\[[\s\S]*\]/);
+                    if (jsonMatch) {
+                        const news = JSON.parse(jsonMatch[0]);
+                        grid.innerHTML = news.map(item => `
+                            <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer" onclick="window.open('${item.url}', '_blank')">
+                                <span class="text-[10px] font-bold px-2 py-1 bg-indigo-50 text-indigo-600 rounded uppercase">${item.platform}</span>
+                                <h3 class="font-bold mt-3 text-slate-800 line-clamp-2">${item.title}</h3>
+                                <p class="text-xs text-slate-400 mt-2 line-clamp-3">${item.summary}</p>
+                            </div>
+                        `).join('');
+                    }
                 }
             } catch (e) {
-                alert("失败原因: " + e.message);
+                alert("出错啦: " + e.message);
             } finally {
                 btn.disabled = false;
                 status.classList.add('hidden');
             }
-        }
-
-        function render(data) {
-            const grid = document.getElementById('grid');
-            grid.innerHTML = data.map(item => `
-                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onclick="window.open('${item.url}', '_blank')">
-                    <span class="text-[10px] font-bold px-2 py-1 bg-slate-100 rounded-md text-slate-500 uppercase">${item.platform}</span>
-                    <h3 class="font-bold mt-3 text-slate-800 line-clamp-2">${item.title}</h3>
-                    <p class="text-xs text-slate-400 mt-2 line-clamp-3 leading-relaxed">${item.summary}</p>
-                </div>
-            `).join('');
         }
     </script>
 </body>
