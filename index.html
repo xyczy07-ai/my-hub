@@ -5,19 +5,19 @@
     <title>Sora 资讯看板</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-50 p-6 text-slate-800">
+<body class="bg-slate-50 p-6">
     <div class="max-w-4xl mx-auto">
-        <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-            <h1 class="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Sora Hub</h1>
-            <button onclick="fetchData()" id="btn" class="bg-indigo-600 text-white px-8 py-2 rounded-full font-medium hover:bg-indigo-700 transition-all active:scale-95">刷新资讯</button>
+        <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-3xl shadow-sm border">
+            <h1 class="text-2xl font-bold text-indigo-600">Sora Hub</h1>
+            <button onclick="fetchData()" id="btn" class="bg-indigo-600 text-white px-8 py-2 rounded-full font-medium active:scale-95 transition-all">刷新资讯</button>
         </div>
 
-        <div id="status" class="hidden mb-6 text-center py-4 bg-indigo-50 text-indigo-600 rounded-2xl text-sm font-medium animate-pulse border border-indigo-100">
-            AI 正在调取全球资讯，请稍候约 10 秒...
+        <div id="status" class="hidden mb-6 text-center py-4 bg-indigo-50 text-indigo-600 rounded-2xl animate-pulse">
+            AI 正在全网搜索 Sora 资讯，请耐心等待 12 秒...
         </div>
 
         <div id="grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div class="col-span-full py-20 text-center text-slate-400 italic font-light">点击上方按钮，开启 AI 搜索之旅</div>
+            <div class="col-span-full py-20 text-center text-slate-400">点击按钮，开启最后一次测试</div>
         </div>
     </div>
 
@@ -35,7 +35,7 @@
             grid.innerHTML = '';
 
             try {
-                // 1. 发起请求
+                // 1. 直接发起对话
                 const res = await fetch('https://api.coze.com/v3/chat', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${PAT}`, 'Content-Type': 'application/json' },
@@ -45,63 +45,52 @@
                         stream: false,
                         additional_messages: [{
                             role: "user",
-                            content: "搜索 3 条今日 Sora 最新视频资讯。严格按此 JSON 数组返回：[{\"title\":\"\", \"url\":\"\", \"platform\":\"\", \"summary\":\"\"}]",
+                            content: "搜索今日 Sora 3条视频资讯，直接返回 JSON 数组不要废话：[{\"title\":\"\", \"url\":\"\", \"platform\":\"\", \"summary\":\"\"}]",
                             content_type: "text"
                         }]
                     })
                 });
 
                 const startData = await res.json();
-                if (startData.code !== 0) throw new Error(startData.msg);
+                if (startData.code !== 0) throw new Error("API 响应错误: " + startData.msg);
 
                 const chatId = startData.data.id;
 
-                // 2. 暴力等待法：直接等 10 秒，给 Bot 充足的搜索时间
-                await new Promise(r => setTimeout(r, 10000));
+                // 2. 强制等待：不查询状态，直接死等 12 秒给 Bot 搜索时间
+                await new Promise(r => setTimeout(r, 12000));
 
-                // 3. 直接去拿最后的消息列表
+                // 3. 直接去消息列表里拿结果
                 const msgRes = await fetch(`https://api.coze.com/v3/chat/message/list?chat_id=${chatId}`, {
                     headers: { 'Authorization': `Bearer ${PAT}` }
                 });
                 const msgData = await msgRes.json();
                 
-                // 在返回的列表中寻找 AI 的回复 (role 为 assistant)
-                const aiMsg = msgData.data.find(m => m.role === 'assistant' && m.type === 'answer');
+                // 寻找 AI 说话的那一条
+                const aiMsg = msgData.data ? msgData.data.find(m => m.role === 'assistant' && m.type === 'answer') : null;
 
                 if (aiMsg && aiMsg.content) {
                     const jsonMatch = aiMsg.content.match(/\[[\s\S]*\]/);
                     if (jsonMatch) {
                         const news = JSON.parse(jsonMatch[0]);
-                        render(news);
+                        grid.innerHTML = news.map(item => `
+                            <div class="bg-white p-6 rounded-3xl border shadow-sm hover:shadow-md transition-all cursor-pointer" onclick="window.open('${item.url}', '_blank')">
+                                <span class="text-[10px] font-bold px-2 py-1 bg-indigo-50 text-indigo-600 rounded uppercase">${item.platform || 'Sora'}</span>
+                                <h3 class="font-bold mt-3 text-slate-800 line-clamp-2">${item.title}</h3>
+                                <p class="text-xs text-slate-400 mt-2 line-clamp-3">${item.summary}</p>
+                            </div>
+                        `).join('');
                     } else {
-                        grid.innerHTML = `<div class="col-span-full p-10 bg-white rounded-3xl border text-center text-slate-500">
-                            AI 说话没带链接，它说：<br><br>${aiMsg.content}
-                        </div>`;
+                        grid.innerHTML = `<div class="col-span-full p-10 bg-white rounded-3xl border text-center text-slate-500">AI 已响应，但格式不对，内容如下：<br>${aiMsg.content}</div>`;
                     }
                 } else {
-                    throw new Error("AI 还在思考中，请再点一次刷新试试。");
+                    grid.innerHTML = `<div class="col-span-full p-10 bg-white rounded-3xl border text-center text-slate-500">AI 还在搜索中，请 10 秒后再次点击“刷新资讯”。</div>`;
                 }
             } catch (e) {
-                alert("由于网络原因，请重试一次: " + e.message);
+                alert("失败: " + e.message);
             } finally {
                 btn.disabled = false;
                 status.classList.add('hidden');
             }
-        }
-
-        function render(data) {
-            const grid = document.getElementById('grid');
-            grid.innerHTML = data.map(item => `
-                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer" onclick="window.open('${item.url}', '_blank')">
-                    <span class="text-[10px] font-bold px-2 py-1 bg-indigo-50 text-indigo-600 rounded uppercase border border-indigo-100">${item.platform || 'NEWS'}</span>
-                    <h3 class="font-bold mt-4 text-slate-800 line-clamp-2">${item.title}</h3>
-                    <p class="text-xs text-slate-400 mt-2 line-clamp-3 leading-relaxed">${item.summary || '点击查看详情'}</p>
-                    <div class="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center text-indigo-600 text-[10px] font-bold">
-                        <span>阅读全文</span>
-                        <span>→</span>
-                    </div>
-                </div>
-            `).join('');
         }
     </script>
 </body>
